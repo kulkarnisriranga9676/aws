@@ -1,0 +1,149 @@
+from collections import defaultdict
+
+import boto3
+import botocore.session
+import boto.ec2
+from boto.manage.cmdshell import sshclient_from_instance
+import subprocess
+import sys
+
+
+running = {}
+reserved = {}
+on_demand = {}
+od = {}
+
+final = dict()
+
+
+def get_running_instances(region):
+    for ses in ['default', 'ci', 'dev', 'siva']:
+        boto3.setup_default_session(profile_name=ses)
+        ec2 = boto3.client('ec2', region)
+        reservations = ec2.describe_instances()
+        for reservation in reservations["Reservations"]:
+            for instance in reservation["Instances"]:
+                if instance["State"]["Name"] == "running":
+                    if not instance.has_key('SpotInstanceRequestId'):
+                        for tagname in instance["Tags"]:
+                            if tagname["Key"] == "Name":
+                                if instance["InstanceType"] in final:
+                                    final[instance["InstanceType"]] = final[instance["InstanceType"]] + 1
+                                else:
+                                    final[instance["InstanceType"]] = 1
+    for key, value in final.viewitems():
+       # print region, ":", key, value
+        running[region][key] = value
+
+
+def get_reservations_all(region):
+    boto3.setup_default_session(profile_name='default')
+    ec2 = boto3.client('ec2', region)
+    reg = dict()
+    reservations = ec2.describe_reserved_instances()
+    for reservation in reservations['ReservedInstances']:
+        if reservation['State'] == 'active':
+            count = reservation['InstanceCount']
+            if reservation["InstanceType"] in reg:
+                reg[reservation["InstanceType"]] = reg[reservation["InstanceType"]] + count
+                # print region, reservation["InstanceType"]
+            else:
+                reg[reservation["InstanceType"]] = count
+
+                # print reg.viewitems()
+    for key, value in reg.viewitems():
+        # print "reserved", region, key, value
+        reserved[region][key] = value
+
+
+#
+
+def compare_reserved():
+    for region in reserved:
+        for instance in reserved[region]:
+            running_region = running.get(region)
+            if running_region is not None:
+                running_instances = running_region.get(instance)
+                if running_instances is None:
+                    running_instances = 0
+                on_demand_instances = reserved[region][instance] - running_instances
+                on_demand[region][instance] = on_demand_instances
+    for region in on_demand:
+        for instance in on_demand[region]:
+            if on_demand[region][instance] > 0:
+                print "Reserved UnUsed : " + region + " : " + instance + " : " + str(on_demand[region][instance])
+
+
+def compare_od():
+    for region in running:
+        for instance in running[region]:
+            reserved_region = reserved.get(region)
+            if reserved_region is not None:
+                reserved_instances = reserved_region.get(instance)
+                if reserved_instances is None:
+                    reserved_instances = 0
+                od_instances = running[region][instance] - reserved_instances
+                od[region][instance] = od_instances
+    for region in od:
+        for instance in od[region]:
+
+            if od[region][instance] > 0:
+                print "Running OD : " + region + " : " + instance + " : " + str(od[region][instance])
+
+def disc_check(region):
+    print "Checking  = " + region
+
+    conn = boto.ec2.connect_to_region(region)
+    reservations = conn.get_all_reservations()
+    COMMAND='pwd'
+    KEYDIR = '/Users/sriranga/keys/'
+    USERNAME = 'ec2-user'
+    for reservation in reservations:
+        inst = reservation.instances[0]
+        if inst.state == 'running':
+            if not inst.key_name == 'datascience-ci' and not inst.key_name == 'acr':
+                keyy = inst.key_name+'.pem'
+                # print inst.id + " === " +inst.ip_address + " == " + keyy
+                ssh = subprocess.Popen(
+                    ["ssh", "-o", "StrictHostKeyChecking no", \
+                     "-i", "%s/%s.pem" % (KEYDIR, keyy), "%s@%s" % (USERNAME, inst.ip_address), \
+                     COMMAND],
+                    shell=False,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE)
+                result = ssh.stdout.readlines()
+                print result
+
+                # for res in result:
+                #     print res
+                #     splits=res.split()
+                #     # print splits[4], splits[5]
+                #     try:
+                #         usage=int(splits[4].replace("%",""))
+                #         if usage > 0:
+                #             print inst.ip_address, splits[5]
+                #     except Exception as e:
+                #         print e
+                #         print "exception for"+splits[4]
+
+
+
+
+
+def main():
+    # regions = ['us-east-1', 'us-west-1', 'us-west-2', 'eu-west-1', 'ap-southeast-1', 'ap-southeast-2']
+    regions = ['us-east-1']
+    for region in regions:
+        # disc_check(region)
+        running[region] = {}
+        reserved[region] = {}
+        on_demand[region] = {}
+        od[region] = {}
+        get_running_instances(region)
+        get_reservations_all(region)
+    compare_reserved()
+    print " ============= "
+    compare_od()
+
+
+if __name__ == '__main__': main()
