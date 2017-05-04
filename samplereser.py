@@ -17,7 +17,7 @@ final = dict()
 
 
 def get_running_instances(region):
-    for ses in ['default', 'ci', 'dev', 'siva']:
+    for ses in ['default']:
         boto3.setup_default_session(profile_name=ses)
         ec2 = boto3.client('ec2', region)
         reservations = ec2.describe_instances()
@@ -32,7 +32,6 @@ def get_running_instances(region):
                                 else:
                                     final[instance["InstanceType"]] = 1
     for key, value in final.viewitems():
-       # print region, ":", key, value
         running[region][key] = value
 
 
@@ -50,9 +49,8 @@ def get_reservations_all(region):
             else:
                 reg[reservation["InstanceType"]] = count
 
-                # print reg.viewitems()
     for key, value in reg.viewitems():
-        # print "reserved", region, key, value
+
         reserved[region][key] = value
 
 
@@ -93,6 +91,7 @@ def compare_od():
 
 def main():
     regions = ['us-east-1']
+    # regions can be ['us-east-1', 'us-west-1', 'us-west-2', 'eu-west-1', 'ap-southeast-1', 'ap-southeast-2']
     for region in regions:
         running[region] = {}
         reserved[region] = {}
