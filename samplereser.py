@@ -90,51 +90,10 @@ def compare_od():
             if od[region][instance] > 0:
                 print "Running OD : " + region + " : " + instance + " : " + str(od[region][instance])
 
-def disc_check(region):
-    print "Checking  = " + region
-
-    conn = boto.ec2.connect_to_region(region)
-    reservations = conn.get_all_reservations()
-    COMMAND='pwd'
-    KEYDIR = '/Users/sriranga/keys/'
-    USERNAME = 'ec2-user'
-    for reservation in reservations:
-        inst = reservation.instances[0]
-        if inst.state == 'running':
-            if not inst.key_name == 'datascience-ci' and not inst.key_name == 'acr':
-                keyy = inst.key_name+'.pem'
-                # print inst.id + " === " +inst.ip_address + " == " + keyy
-                ssh = subprocess.Popen(
-                    ["ssh", "-o", "StrictHostKeyChecking no", \
-                     "-i", "%s/%s.pem" % (KEYDIR, keyy), "%s@%s" % (USERNAME, inst.ip_address), \
-                     COMMAND],
-                    shell=False,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE)
-                result = ssh.stdout.readlines()
-                print result
-
-                # for res in result:
-                #     print res
-                #     splits=res.split()
-                #     # print splits[4], splits[5]
-                #     try:
-                #         usage=int(splits[4].replace("%",""))
-                #         if usage > 0:
-                #             print inst.ip_address, splits[5]
-                #     except Exception as e:
-                #         print e
-                #         print "exception for"+splits[4]
-
-
-
-
 
 def main():
-    # regions = ['us-east-1', 'us-west-1', 'us-west-2', 'eu-west-1', 'ap-southeast-1', 'ap-southeast-2']
     regions = ['us-east-1']
     for region in regions:
-        # disc_check(region)
         running[region] = {}
         reserved[region] = {}
         on_demand[region] = {}
